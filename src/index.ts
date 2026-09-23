@@ -25,11 +25,22 @@ async function loginWithQR(zalo: Zalo): Promise<API> {
       switch (event.type) {
         case LoginQRCallbackEventType.QRCodeGenerated: {
           console.log("\n=======================================================");
-          console.log("  👉 VUI LÒNG MỞ ZALO TRÊN ĐIỆN THOẠI VÀ QUÉT MÃ QR DƯỚI ĐÂY:");
+          console.log("  👉 VUI LÒNG DÙNG ZALO ĐIỆN THOẠI QUÉT MÃ QR DƯỚI ĐÂY:");
           console.log("=======================================================\n");
-          qrcodeTerminal.generate(event.data.code, { small: true });
-          console.log("\n📌 Nếu mã QR bị méo hoặc không quét được trên terminal,");
-          console.log("   bạn có thể xem file ảnh 'qr.png' (nếu được lưu tự động).\n");
+
+          // Đường dẫn URL đăng nhập chính thức của Zalo
+          const qrUrl = event.data.token
+            ? `http://zaloapp.com/qr/l?tk=${event.data.token}`
+            : event.data.code;
+
+          qrcodeTerminal.generate(qrUrl, { small: true });
+
+          // Tự động lưu ảnh qr.png vào thư mục để có thể mở xem trực tiếp nếu terminal bị méo
+          event.actions.saveToFile("qr.png").catch(() => {});
+
+          console.log("\n💡 MẸO:");
+          console.log("   1. Dùng tính năng [Quét mã QR] trong app Zalo (biểu tượng quét cạnh ô tìm kiếm).");
+          console.log("   2. Nếu quét trên terminal khó, hãy mở file ảnh 'qr.png' trong thư mục bot để quét!\n");
           break;
         }
 
