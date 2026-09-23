@@ -1,0 +1,7 @@
+node_modules/
+dist/
+session.json
+.env
+*.log
+qr.png
+.DS_Store
