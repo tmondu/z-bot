@@ -26,7 +26,7 @@ const prefixes = rawPrefixes
 
 export const config: BotConfig = {
   geminiApiKey: process.env.GEMINI_API_KEY || "",
-  geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+  geminiModel: process.env.GEMINI_MODEL || "gemini-3.6-flash",
   botName: process.env.BOT_NAME || "Trợ Giảng Tiếng Nhật PThamSS",
   prefixes: prefixes.length > 0 ? prefixes : ["/hoi", "/kanji", "/dich", "/nguphap", "/help"],
   replyDirectMessages: process.env.REPLY_DIRECT_MESSAGES !== "false",

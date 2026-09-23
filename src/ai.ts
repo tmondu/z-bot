@@ -48,34 +48,58 @@ export async function askJapaneseTutor(query: string, studentName?: string): Pro
     ? `Học viên "${studentName}" đặt câu hỏi sau:\n${query}`
     : `Câu hỏi của học viên:\n${query}`;
 
-  try {
-    const response = await client.models.generateContent({
-      model: config.geminiModel,
-      contents: prompt,
-      config: {
-        systemInstruction: JAPANESE_TUTOR_SYSTEM_INSTRUCTION,
-        temperature: 0.6,
-      },
-    });
+  const candidateModels = [
+    config.geminiModel,
+    "gemini-3.6-flash",
+    "gemini-1.5-flash",
+  ].filter((v, i, a) => a.indexOf(v) === i && Boolean(v));
 
-    const reply = response.text;
-    if (!reply || reply.trim().length === 0) {
-      return "Xin lỗi bạn, hiện tại mình chưa thể xử lý câu trả lời này. Bạn hãy thử đặt lại câu hỏi ngắn gọn hơn nhé!";
+  let lastError: any = null;
+
+  for (const modelName of candidateModels) {
+    try {
+      const response = await client.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: {
+          systemInstruction: JAPANESE_TUTOR_SYSTEM_INSTRUCTION,
+          temperature: 0.6,
+        },
+      });
+
+      const reply = response.text;
+      if (!reply || reply.trim().length === 0) {
+        return "Xin lỗi bạn, hiện tại mình chưa thể xử lý câu trả lời này. Bạn hãy thử đặt lại câu hỏi ngắn gọn hơn nhé!";
+      }
+
+      return reply.trim();
+    } catch (error: any) {
+      lastError = error;
+      const msg = error?.message || String(error);
+      const isNotFound =
+        msg.includes("404") ||
+        msg.includes("NOT_FOUND") ||
+        msg.includes("no longer available") ||
+        msg.includes("is not found");
+
+      if (isNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
+        console.warn(`⚠️ [Gemini Fallback] Model "${modelName}" không còn hỗ trợ, đang tự động chuyển sang model dự phòng...`);
+        continue;
+      }
+
+      console.error("❌ [Gemini Error]:", error);
+
+      if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("429")) {
+        return "⏳ Hiện tại lượng câu hỏi quá đông nên AI tạm thời đạt giới hạn gọi (Rate Limit). Bạn vui lòng đợi 1-2 phút rồi hỏi lại nhé!";
+      }
+
+      if (msg.includes("API_KEY_INVALID") || msg.includes("401")) {
+        return "⚠️ GEMINI_API_KEY không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại cấu hình trên máy chủ!";
+      }
+
+      return "Cảm ơn câu hỏi của bạn. Hệ thống đang gặp chút gián đoạn kết nối, bạn hãy thử lại sau ít phút nhé!";
     }
-
-    return reply.trim();
-  } catch (error: any) {
-    console.error("❌ [Gemini Error]:", error);
-
-    const errorMessage = error?.message || String(error);
-    if (errorMessage.includes("RESOURCE_EXHAUSTED") || errorMessage.includes("429")) {
-      return "⏳ Hiện tại lượng câu hỏi quá đông nên AI tạm thời đạt giới hạn gọi (Rate Limit). Bạn vui lòng đợi 1-2 phút rồi hỏi lại nhé!";
-    }
-
-    if (errorMessage.includes("API_KEY_INVALID") || errorMessage.includes("401")) {
-      return "⚠️ GEMINI_API_KEY không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại cấu hình trên máy chủ!";
-    }
-
-    return "Cảm ơn câu hỏi của bạn. Hệ thống đang gặp chút gián đoạn kết nối, bạn hãy thử lại sau ít phút nhé!";
   }
+
+  return "Xin lỗi bạn, hệ thống AI tạm thời không phản hồi. Bạn hãy thử lại sau nhé!";
 }
