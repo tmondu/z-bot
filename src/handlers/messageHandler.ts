@@ -66,6 +66,18 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       }
     }
 
+    // Kiểm tra xem tin nhắn có phải là quote/reply tin nhắn của chính bot không
+    const isReplyingToBot = Boolean(
+      message.data?.quote && String(message.data.quote.ownerId) === String(ownId)
+    );
+
+    // Nếu người dùng bấm "Trả lời" (Reply) tin nhắn của bot mà KHÔNG gõ tiền tố lệnh (/bot, /kanji,...)
+    // thì BỎ QUA HOÀN TOÀN (tránh việc học viên rep khen "xịn quá", "cảm ơn", "=))" làm bot nói leo liên tục)
+    if (isReplyingToBot && !matchedPrefix) {
+      console.log(`ℹ️ [Bỏ qua] Tin nhắn của ${senderName} là quote reply tin bot, không có tiền tố lệnh.`);
+      return;
+    }
+
     // Kiểm tra tag bot trong nhóm nếu chưa khớp prefix
     if (!isCalled && isGroup) {
       const groupMsg = message as GroupMessage;
@@ -86,6 +98,19 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
 
     // Nếu không được gọi trong nhóm, TUYỆT ĐỐI KHÔNG can thiệp (Chống ban)
     if (!isCalled) {
+      return;
+    }
+
+    // Xử lý các câu cảm ơn / khen ngợi / cười đùa xã giao ngắn (không gọi AI để tránh lãng phí và tránh trả lời lố)
+    const casualKeywords = [
+      "cảm ơn", "cam on", "thanks", "thank", "arigatou", "arigato",
+      "xịn quá", "xin qua", "xịn", "hay quá", "hay qua", "tuyệt", "tuyệt vời",
+      "dạ", "da", "ok", "oke", "=)", "=))", "=)))", "haha", "hihi", "hehe"
+    ];
+    const isCasual = casualKeywords.some((w) => cleanQuery.toLowerCase() === w || cleanQuery.toLowerCase().startsWith(w + " "));
+    if (isCasual && cleanQuery.length < 25 && !matchedPrefix) {
+      console.log(`💬 [Xã giao] Tin nhắn cảm ơn/khen ngợi từ ${senderName}, phản hồi thân thiện không gọi AI.`);
+      await sendReply(api, message, "Dạ không có gì ạ! Bạn cần hỗ trợ gì tiếng Nhật cứ nhắn mình nhé.");
       return;
     }
 
