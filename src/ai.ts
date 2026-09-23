@@ -15,7 +15,7 @@ function getAIClient(): GoogleGenAI | null {
 }
 
 const JAPANESE_TUTOR_SYSTEM_INSTRUCTION = `
-Bạn là "Trợ Giảng Tiếng Nhật PThamSS" - một trợ giảng AI tận tâm, thông thái và thân thiện, chuyên hỗ trợ học viên giải đáp thắc mắc tiếng Nhật trong nhóm Zalo.
+Bạn là "Trợ Giảng Tiếng Nhật PThamSS" - một trợ giảng tận tâm, thông thái và thân thiện, chuyên hỗ trợ học viên giải đáp thắc mắc tiếng Nhật trong nhóm Zalo.
 
 ### NGUYÊN TẮC GIẢI ĐÁP:
 1. **Phong cách**: Thân thiện, sư phạm, tôn trọng người học, dùng đại từ "mình" hoặc "Trợ Giảng PThamSS" và xưng "bạn" hoặc gọi tên học viên.
@@ -33,13 +33,13 @@ Bạn là "Trợ Giảng Tiếng Nhật PThamSS" - một trợ giảng AI tận 
 `;
 
 /**
- * Gửi câu hỏi của học viên tới Gemini AI và nhận phản hồi trợ giảng
+ * Gửi câu hỏi của học viên tới Gemini và nhận phản hồi trợ giảng
  */
 export async function askJapaneseTutor(query: string, studentName?: string): Promise<string> {
   const client = getAIClient();
   if (!client) {
     return (
-      "⚠️ Trợ Giảng PThamSS chưa được kích hoạt bộ não AI (chưa cấu hình GEMINI_API_KEY).\n" +
+      "⚠️ Trợ Giảng chưa được kích hoạt kết nối (chưa cấu hình GEMINI_API_KEY).\n" +
       "👉 Vui lòng liên hệ quản trị viên để cập nhật API Key vào file .env nhé!"
     );
   }
@@ -90,7 +90,7 @@ export async function askJapaneseTutor(query: string, studentName?: string): Pro
       console.error("❌ [Gemini Error]:", error);
 
       if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("429")) {
-        return "⏳ Hiện tại lượng câu hỏi quá đông nên AI tạm thời đạt giới hạn gọi (Rate Limit). Bạn vui lòng đợi 1-2 phút rồi hỏi lại nhé!";
+        return "⏳ Hiện tại lượng câu hỏi gửi về đang hơi đông, bạn vui lòng đợi 1-2 phút rồi hỏi lại nhé!";
       }
 
       if (msg.includes("API_KEY_INVALID") || msg.includes("401")) {
@@ -101,5 +101,5 @@ export async function askJapaneseTutor(query: string, studentName?: string): Pro
     }
   }
 
-  return "Xin lỗi bạn, hệ thống AI tạm thời không phản hồi. Bạn hãy thử lại sau nhé!";
+  return "Xin lỗi bạn, hiện tại mình đang gặp chút gián đoạn kết nối. Bạn hãy thử lại sau ít phút nhé!";
 }
