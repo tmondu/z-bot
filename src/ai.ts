@@ -50,8 +50,10 @@ export async function askJapaneseTutor(query: string, studentName?: string): Pro
 
   const candidateModels = [
     config.geminiModel,
-    "gemini-3.6-flash",
     "gemini-1.5-flash",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
   ].filter((v, i, a) => a.indexOf(v) === i && Boolean(v));
 
   let lastError: any = null;
@@ -76,14 +78,19 @@ export async function askJapaneseTutor(query: string, studentName?: string): Pro
     } catch (error: any) {
       lastError = error;
       const msg = error?.message || String(error);
-      const isNotFound =
+      const shouldFallback =
         msg.includes("404") ||
         msg.includes("NOT_FOUND") ||
+        msg.includes("503") ||
+        msg.includes("UNAVAILABLE") ||
+        msg.includes("high demand") ||
+        msg.includes("RESOURCE_EXHAUSTED") ||
+        msg.includes("429") ||
         msg.includes("no longer available") ||
         msg.includes("is not found");
 
-      if (isNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
-        console.warn(`⚠️ [Gemini Fallback] Model "${modelName}" không còn hỗ trợ, đang tự động chuyển sang model dự phòng...`);
+      if (shouldFallback && modelName !== candidateModels[candidateModels.length - 1]) {
+        console.warn(`⚠️ [Gemini Fallback] Model "${modelName}" đang bận/quá tải, tự động chuyển sang model dự phòng...`);
         continue;
       }
 
