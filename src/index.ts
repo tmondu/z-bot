@@ -2,7 +2,7 @@ import { Zalo, API, LoginQRCallbackEventType } from "zca-js";
 import qrcodeTerminal from "qrcode-terminal";
 import { config, validateConfig } from "./config";
 import { loadSession, saveSession, clearSession } from "./session";
-import { handleIncomingMessage } from "./handlers/messageHandler";
+import { handleIncomingMessage, clearGroupAdminCache } from "./handlers/messageHandler";
 
 function printBanner(): void {
   console.log("=======================================================");
@@ -160,6 +160,13 @@ async function main(): Promise<void> {
 
     currentApi.listener.on("message", (message) => {
       handleIncomingMessage(currentApi, currentOwnId, message);
+    });
+
+    currentApi.listener.on("group_event", (event: any) => {
+      const threadId = event?.threadId || event?.groupId || event?.data?.groupId;
+      if (threadId) {
+        clearGroupAdminCache(String(threadId));
+      }
     });
   };
 

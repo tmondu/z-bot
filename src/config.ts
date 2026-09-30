@@ -18,6 +18,7 @@ export interface BotConfig {
   sessionPath: string;
   teacherIds: string[];
   onlyGroupAdmins: boolean;
+  groupAdminCacheMinutes: number;
 }
 
 const rawPrefixes = process.env.BOT_PREFIXES || "/hoi,/kanji,/dich,/nguphap,/help,/id,/myid";
@@ -46,6 +47,7 @@ export const config: BotConfig = {
   sessionPath: path.resolve(process.cwd(), "session.json"),
   teacherIds: teacherIds,
   onlyGroupAdmins: process.env.ONLY_GROUP_ADMINS === "true" || process.env.ONLY_ADMINS === "true",
+  groupAdminCacheMinutes: parseInt(process.env.GROUP_ADMIN_CACHE_MINUTES || "30", 10),
 };
 
 export function validateConfig(): void {

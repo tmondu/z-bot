@@ -5,13 +5,26 @@ import { askJapaneseTutor } from "../ai";
 // Lưu thời gian gọi gần nhất của từng user để chống spam (cooldown)
 const userCooldowns = new Map<string, number>();
 
-// Bộ nhớ đệm thông tin Trưởng/Phó nhóm (cache 5 phút để tránh gọi API Zalo liên tục)
+// Bộ nhớ đệm thông tin Trưởng/Phó nhóm
 interface GroupAdminCache {
   creatorId: string;
   adminIds: string[];
   expiresAt: number;
 }
 const groupAdminCache = new Map<string, GroupAdminCache>();
+
+/**
+ * Xóa cache của một nhóm hoặc toàn bộ khi có sự kiện thay đổi nhóm
+ */
+export function clearGroupAdminCache(groupId?: string): void {
+  if (groupId) {
+    groupAdminCache.delete(groupId);
+    console.log(`🔄 [Cache] Đã làm mới dữ liệu quyền cho nhóm: ${groupId}`);
+  } else {
+    groupAdminCache.clear();
+    console.log("🔄 [Cache] Đã làm mới toàn bộ dữ liệu quyền các nhóm.");
+  }
+}
 
 /**
  * Kiểm tra xem người dùng có phải là Trưởng nhóm (Creator) hoặc Phó nhóm (Admin) hay không
@@ -21,14 +34,21 @@ async function checkIsGroupAdmin(api: API, groupId: string, userId: string): Pro
     const now = Date.now();
     let cached = groupAdminCache.get(groupId);
 
-    if (!cached || now > cached.expiresAt) {
+    // Nếu config.groupAdminCacheMinutes = 0: Lưu vĩnh viễn (chỉ làm mới khi nhóm có sự kiện group_event)
+    const isExpired = config.groupAdminCacheMinutes > 0 && cached ? now > cached.expiresAt : false;
+
+    if (!cached || isExpired) {
       const res = await api.getGroupInfo(groupId);
       const groupData = res?.gridInfoMap?.[groupId];
       if (groupData) {
+        const expiresAt = config.groupAdminCacheMinutes > 0
+          ? now + config.groupAdminCacheMinutes * 60 * 1000
+          : Infinity;
+
         cached = {
           creatorId: String(groupData.creatorId || ""),
           adminIds: (groupData.adminIds || []).map((id) => String(id)),
-          expiresAt: now + 5 * 60 * 1000, // Cache trong 5 phút
+          expiresAt: expiresAt,
         };
         groupAdminCache.set(groupId, cached);
       }
