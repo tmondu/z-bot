@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   }
 
   // 3. Lấy thông tin tài khoản Bot
-  const ownId = api.getOwnId();
+  let ownId = api.getOwnId();
   console.log(`\n✅ Bot đã sẵn sàng hoạt động!`);
   console.log(`🆔 Bot User ID: ${ownId}`);
   console.log(`⚙️  Model AI: ${config.geminiModel}`);
@@ -124,30 +124,138 @@ async function main(): Promise<void> {
   console.log(`🛡️  Chế độ chống ban: BẬT (Chỉ trả lời khi tag bot hoặc gõ lệnh, cooldown: ${config.cooldownMs}ms)`);
   console.log("\n🚀 Đang lắng nghe tin nhắn Zalo...\n");
 
-  // 4. Lắng nghe các sự kiện socket
-  api.listener.on("connected", () => {
-    console.log("🟢 [Zalo Socket] Đã kết nối thành công tới máy chủ Zalo.");
-  });
+  let isReconnecting = false;
+  let reconnectAttempts = 0;
 
-  api.listener.on("closed", (code, reason) => {
-    console.warn(`🟡 [Zalo Socket] Kết nối bị đóng (mã: ${code}, lý do: ${reason}). Đang tự động kết nối lại...`);
-  });
+  // Hàm thiết lập lắng nghe các sự kiện socket
+  const bindListenerEvents = (currentApi: API, currentOwnId: string) => {
+    // Xóa các listener cũ để tránh trùng lặp khi reconnect
+    currentApi.listener.removeAllListeners();
 
-  api.listener.on("error", (error) => {
-    console.error("🔴 [Zalo Socket Lỗi]:", error);
-  });
+    currentApi.listener.on("connected", () => {
+      reconnectAttempts = 0;
+      isReconnecting = false;
+      // Reset bộ đếm retry nội bộ của thư viện zca-js
+      try {
+        const listenerAny = currentApi.listener as any;
+        if (listenerAny.retryCount) {
+          for (const key of Object.keys(listenerAny.retryCount)) {
+            if (listenerAny.retryCount[key]) {
+              listenerAny.retryCount[key].count = 0;
+            }
+          }
+        }
+      } catch (e) {}
+      console.log("🟢 [Zalo Socket] Đã kết nối thành công tới máy chủ Zalo.");
+    });
 
-  // Bắt sự kiện có tin nhắn mới
-  api.listener.on("message", (message) => {
-    handleIncomingMessage(api!, ownId, message);
-  });
+    currentApi.listener.on("closed", (code, reason) => {
+      console.warn(`🟡 [Zalo Socket] Kết nối bị đóng (mã: ${code}, lý do: ${reason || "không rõ"}).`);
+      triggerAutoReconnect();
+    });
 
-  // Bắt đầu lắng nghe tin nhắn với cờ retryOnClose
+    currentApi.listener.on("error", (error) => {
+      console.error("🔴 [Zalo Socket Lỗi]:", error);
+    });
+
+    currentApi.listener.on("message", (message) => {
+      handleIncomingMessage(currentApi, currentOwnId, message);
+    });
+  };
+
+  // Hàm kích hoạt tự động kết nối lại
+  const triggerAutoReconnect = async () => {
+    if (isReconnecting) return;
+    isReconnecting = true;
+    reconnectAttempts++;
+
+    // Thời gian chờ tăng dần (Backoff): 3s, 6s, 10s, max 15s
+    const delay = Math.min(reconnectAttempts * 3000, 15000);
+    console.log(`🔄 [Auto-Reconnect] Đang chuẩn bị kết nối lại (Lần ${reconnectAttempts}) sau ${delay / 1000}s...`);
+
+    setTimeout(async () => {
+      try {
+        if (!api) return;
+
+        // Dừng listener cũ nếu còn
+        try {
+          api.listener.stop();
+        } catch (e) {}
+
+        // Nếu đã thử nhiều lần mà listener.start() không được, thử login lại từ session
+        if (reconnectAttempts > 3) {
+          console.log("🔄 [Auto-Reconnect] Thử làm mới phiên đăng nhập từ session.json...");
+          const session = loadSession();
+          if (session) {
+            try {
+              api = await zalo.login(session);
+              ownId = api.getOwnId();
+              bindListenerEvents(api, ownId);
+              api.listener.start({ retryOnClose: true });
+              console.log("🎉 [Auto-Reconnect] Làm mới phiên và kết nối lại thành công!");
+              isReconnecting = false;
+              reconnectAttempts = 0;
+              return;
+            } catch (err) {
+              console.warn("⚠️ [Auto-Reconnect] Không thể làm mới phiên qua session:", err);
+            }
+          }
+        }
+
+        // Reset bộ đếm retry nội bộ của zca-js trước khi start lại
+        const listenerAny = api.listener as any;
+        if (listenerAny.retryCount) {
+          for (const key of Object.keys(listenerAny.retryCount)) {
+            if (listenerAny.retryCount[key]) {
+              listenerAny.retryCount[key].count = 0;
+            }
+          }
+        }
+
+        // Thử khởi động lại listener
+        api.listener.start({ retryOnClose: true });
+        console.log("📡 [Auto-Reconnect] Đã gửi yêu cầu kết nối lại Socket...");
+      } catch (err) {
+        console.error("❌ [Auto-Reconnect] Kết nối lại thất bại:", err);
+        isReconnecting = false;
+        // Thử lại tiếp
+        triggerAutoReconnect();
+      }
+    }, delay);
+  };
+
+  // Gắn event và bắt đầu lắng nghe
+  bindListenerEvents(api, ownId);
   api.listener.start({ retryOnClose: true });
 
-  // 5. Xử lý tắt ứng dụng một cách an toàn
+  // 5. Keep-Alive Heartbeat (Random Interval): Đảm bảo tiến trình Node.js luôn sống 24/7
+  // Lưu ý: Heartbeat này chỉ kiểm tra biến trạng thái cục bộ trong bộ nhớ RAM, KHÔNG gửi request lên Zalo.
+  let heartbeatTimeout: NodeJS.Timeout | null = null;
+
+  const scheduleNextHeartbeat = () => {
+    // Random thời gian giữa 35s và 75s (35.000ms - 75.000ms)
+    const randomInterval = Math.floor(Math.random() * (75000 - 35000 + 1)) + 35000;
+
+    heartbeatTimeout = setTimeout(() => {
+      const ws = (api?.listener as any)?.ws;
+      // readyState: 0 (CONNECTING), 1 (OPEN), 2 (CLOSING), 3 (CLOSED)
+      if ((!ws || ws.readyState === 3 || ws.readyState === 2) && !isReconnecting) {
+        console.log("💓 [Heartbeat] Phát hiện kết nối Socket bị ngắt khi nhàn rỗi. Tự động phục hồi...");
+        triggerAutoReconnect();
+      }
+      // Lên lịch cho lần kiểm tra ngẫu nhiên tiếp theo
+      scheduleNextHeartbeat();
+    }, randomInterval);
+  };
+
+  scheduleNextHeartbeat();
+
+  // 6. Xử lý tắt ứng dụng một cách an toàn
   const gracefulShutdown = () => {
     console.log("\n🛑 Đang dừng Bot Zalo và giải phóng kết nối...");
+    if (heartbeatTimeout) {
+      clearTimeout(heartbeatTimeout);
+    }
     try {
       api?.listener.stop();
     } catch (err) {
@@ -160,6 +268,15 @@ async function main(): Promise<void> {
   process.on("SIGINT", gracefulShutdown);
   process.on("SIGTERM", gracefulShutdown);
 }
+
+// Bắt các lỗi không mong muốn để bot không bao giờ bị crash đột ngột
+process.on("uncaughtException", (err) => {
+  console.error("💥 [Uncaught Exception]:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("💥 [Unhandled Rejection]:", reason);
+});
 
 // Chạy bot
 main().catch((fatalError) => {
