@@ -5,6 +5,47 @@ import { askJapaneseTutor } from "../ai";
 // Lưu thời gian gọi gần nhất của từng user để chống spam (cooldown)
 const userCooldowns = new Map<string, number>();
 
+// Bộ nhớ đệm thông tin Trưởng/Phó nhóm (cache 5 phút để tránh gọi API Zalo liên tục)
+interface GroupAdminCache {
+  creatorId: string;
+  adminIds: string[];
+  expiresAt: number;
+}
+const groupAdminCache = new Map<string, GroupAdminCache>();
+
+/**
+ * Kiểm tra xem người dùng có phải là Trưởng nhóm (Creator) hoặc Phó nhóm (Admin) hay không
+ */
+async function checkIsGroupAdmin(api: API, groupId: string, userId: string): Promise<boolean> {
+  try {
+    const now = Date.now();
+    let cached = groupAdminCache.get(groupId);
+
+    if (!cached || now > cached.expiresAt) {
+      const res = await api.getGroupInfo(groupId);
+      const groupData = res?.gridInfoMap?.[groupId];
+      if (groupData) {
+        cached = {
+          creatorId: String(groupData.creatorId || ""),
+          adminIds: (groupData.adminIds || []).map((id) => String(id)),
+          expiresAt: now + 5 * 60 * 1000, // Cache trong 5 phút
+        };
+        groupAdminCache.set(groupId, cached);
+      }
+    }
+
+    if (cached) {
+      const isCreator = cached.creatorId === String(userId);
+      const isAdmin = cached.adminIds.includes(String(userId));
+      return isCreator || isAdmin;
+    }
+    return false;
+  } catch (error) {
+    console.warn(`⚠️ [GroupAdminCheck] Không thể lấy thông tin nhóm ${groupId}:`, error);
+    return false;
+  }
+}
+
 /**
  * Hàm tạo độ trễ ngẫu nhiên mô phỏng người thật
  */
@@ -25,7 +66,7 @@ function getHelpMessage(studentName: string): string {
     `   • /kanji [chữ hán/từ]: Tra cứu Hán Việt, On/Kun, cách nhớ & ví dụ\n` +
     `   • /nguphap [mẫu]: Giải thích ngữ pháp N5 - N1, cấu trúc, ví dụ\n` +
     `   • /dich [câu]: Dịch Nhật - Việt / Việt - Nhật, sửa lỗi hành văn\n` +
-    `   • /id: Xem Zalo User ID của bạn\n` +
+    `   • /id: Xem Zalo User ID & vai trò của bạn\n` +
     `   • /help: Xem danh sách lệnh hỗ trợ\n\n` +
     `💡 Ví dụ: /kanji 勉強 hoặc @${config.botName} phân biệt ~てたまらない và ~てならない`
   );
@@ -105,12 +146,17 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
     // 4. Xử lý các lệnh tiện ích hệ thống (Không bị giới hạn phân quyền)
     // Lệnh xem ID: /id hoặc /myid
     if (matchedPrefix === "/id" || matchedPrefix === "/myid" || cleanQuery.toLowerCase() === "id" || cleanQuery.toLowerCase() === "myid") {
+      let roleInfo = "";
+      if (isGroup) {
+        const isAdmin = await checkIsGroupAdmin(api, message.threadId, senderId);
+        roleInfo = `• Vai trò trong nhóm: ${isAdmin ? "👑 Trưởng nhóm / Phó nhóm" : "👤 Thành viên"}\n`;
+      }
       const idInfo =
         `🆔 THÔNG TIN ĐỊNH DANH ZALO:\n\n` +
         `• Tên hiển thị: ${senderName}\n` +
         `• User ID (UID): ${senderId}\n` +
-        (isGroup ? `• Group ID: ${message.threadId}\n` : "") +
-        `\n💡 Bạn có thể copy User ID trên để điền vào mục TEACHER_IDS trong file .env để phân quyền.`;
+        (isGroup ? `• Group ID: ${message.threadId}\n${roleInfo}` : "") +
+        `\n⚙️ Chế độ phân quyền: ${config.onlyGroupAdmins ? "Chỉ Trưởng/Phó nhóm mới được gọi bot" : "Tự do"}`;
       await sendReply(api, message, idInfo);
       return;
     }
@@ -122,11 +168,20 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       return;
     }
 
-    // 5. Kiểm tra Phân Quyền (Teacher Whitelist) nếu có cấu hình TEACHER_IDS trong .env
+    // 5. Kiểm tra Phân Quyền:
+    // A. Chế độ chỉ cho Trưởng nhóm & Phó nhóm (Creator & Admins)
+    if (isGroup && config.onlyGroupAdmins) {
+      const isAdminOrCreator = await checkIsGroupAdmin(api, message.threadId, senderId);
+      if (!isAdminOrCreator) {
+        console.log(`🔒 [Chặn phân quyền] User "${senderName}" (UID: ${senderId}) không phải Trưởng/Phó nhóm.`);
+        return; // Im lặng bỏ qua
+      }
+    }
+
+    // B. Chế độ lọc theo danh sách TEACHER_IDS (nếu có cấu hình)
     if (config.teacherIds.length > 0 && !config.teacherIds.includes(senderId)) {
       console.log(`🔒 [Chặn phân quyền] User "${senderName}" (UID: ${senderId}) không nằm trong danh sách TEACHER_IDS.`);
-      // Có thể im lặng bỏ qua để tránh làm phiền nhóm
-      return;
+      return; // Im lặng bỏ qua
     }
 
     // Xử lý các câu cảm ơn / khen ngợi / cười đùa xã giao ngắn (không gọi AI để tránh lãng phí và tránh trả lời lố)
