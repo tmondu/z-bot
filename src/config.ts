@@ -16,19 +16,26 @@ export interface BotConfig {
   typingDelayMinMs: number;
   typingDelayMaxMs: number;
   sessionPath: string;
+  teacherIds: string[];
 }
 
-const rawPrefixes = process.env.BOT_PREFIXES || "/hoi,/kanji,/dich,/nguphap,/help";
+const rawPrefixes = process.env.BOT_PREFIXES || "/hoi,/kanji,/dich,/nguphap,/help,/id,/myid";
 const prefixes = rawPrefixes
   .split(",")
   .map((p) => p.trim().toLowerCase())
   .filter((p) => p.length > 0);
 
+const rawTeacherIds = process.env.TEACHER_IDS || "";
+const teacherIds = rawTeacherIds
+  .split(",")
+  .map((id) => id.trim())
+  .filter((id) => id.length > 0);
+
 export const config: BotConfig = {
   geminiApiKey: process.env.GEMINI_API_KEY || "",
   geminiModel: process.env.GEMINI_MODEL || "gemini-3.8-flash",
   botName: process.env.BOT_NAME || "Trợ Giảng Tiếng Nhật PThamSS",
-  prefixes: prefixes.length > 0 ? prefixes : ["/hoi", "/kanji", "/dich", "/nguphap", "/help"],
+  prefixes: prefixes.length > 0 ? prefixes : ["/hoi", "/kanji", "/dich", "/nguphap", "/help", "/id", "/myid"],
   replyDirectMessages: process.env.REPLY_DIRECT_MESSAGES !== "false",
   cooldownMs: parseInt(process.env.COOLDOWN_MS || "5000", 10),
   simulateTyping: process.env.SIMULATE_TYPING !== "false",
@@ -36,6 +43,7 @@ export const config: BotConfig = {
   typingDelayMinMs: parseInt(process.env.TYPING_DELAY_MIN_MS || "1500", 10),
   typingDelayMaxMs: parseInt(process.env.TYPING_DELAY_MAX_MS || "8000", 10),
   sessionPath: path.resolve(process.cwd(), "session.json"),
+  teacherIds: teacherIds,
 };
 
 export function validateConfig(): void {
@@ -43,5 +51,10 @@ export function validateConfig(): void {
     console.warn("\n⚠️  [CẢNH BÁO] Chưa cấu hình GEMINI_API_KEY trong file .env!");
     console.warn("👉 Bot vẫn có thể đăng nhập Zalo nhưng chức năng giải đáp AI sẽ không hoạt động.");
     console.warn("👉 Vui lòng tạo key miễn phí tại: https://aistudio.google.com/ và điền vào .env\n");
+  }
+  if (config.teacherIds.length > 0) {
+    console.log(`🔒 [Phân quyền] Chế độ giới hạn Giáo viên: BẬT (${config.teacherIds.length} UIDs được phép gọi bot).`);
+  } else {
+    console.log(`🔓 [Phân quyền] Chế độ tự do: Mọi người trong nhóm đều có thể gọi bot.`);
   }
 }

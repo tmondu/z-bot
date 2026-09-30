@@ -25,6 +25,7 @@ function getHelpMessage(studentName: string): string {
     `   • /kanji [chữ hán/từ]: Tra cứu Hán Việt, On/Kun, cách nhớ & ví dụ\n` +
     `   • /nguphap [mẫu]: Giải thích ngữ pháp N5 - N1, cấu trúc, ví dụ\n` +
     `   • /dich [câu]: Dịch Nhật - Việt / Việt - Nhật, sửa lỗi hành văn\n` +
+    `   • /id: Xem Zalo User ID của bạn\n` +
     `   • /help: Xem danh sách lệnh hỗ trợ\n\n` +
     `💡 Ví dụ: /kanji 勉強 hoặc @${config.botName} phân biệt ~てたまらない và ~てならない`
   );
@@ -47,7 +48,7 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
     }
 
     const rawText = content.trim();
-    const senderId = message.data.uidFrom;
+    const senderId = String(message.data.uidFrom || "");
     const senderName = message.data.dName || "bạn";
     const isGroup = message.type === ThreadType.Group;
 
@@ -56,7 +57,7 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
     let matchedPrefix = "";
     let cleanQuery = rawText;
 
-    // Kiểm tra tiền tố lệnh (/hoi, /kanji, /dich, /nguphap, /help,...)
+    // Kiểm tra tiền tố lệnh (/hoi, /kanji, /dich, /nguphap, /help, /id, /myid,...)
     for (const prefix of config.prefixes) {
       if (rawText.toLowerCase().startsWith(prefix)) {
         isCalled = true;
@@ -101,6 +102,33 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       return;
     }
 
+    // 4. Xử lý các lệnh tiện ích hệ thống (Không bị giới hạn phân quyền)
+    // Lệnh xem ID: /id hoặc /myid
+    if (matchedPrefix === "/id" || matchedPrefix === "/myid" || cleanQuery.toLowerCase() === "id" || cleanQuery.toLowerCase() === "myid") {
+      const idInfo =
+        `🆔 THÔNG TIN ĐỊNH DANH ZALO:\n\n` +
+        `• Tên hiển thị: ${senderName}\n` +
+        `• User ID (UID): ${senderId}\n` +
+        (isGroup ? `• Group ID: ${message.threadId}\n` : "") +
+        `\n💡 Bạn có thể copy User ID trên để điền vào mục TEACHER_IDS trong file .env để phân quyền.`;
+      await sendReply(api, message, idInfo);
+      return;
+    }
+
+    // Lệnh /help
+    if (matchedPrefix === "/help" || cleanQuery.toLowerCase() === "help") {
+      const helpText = getHelpMessage(senderName);
+      await sendReply(api, message, helpText);
+      return;
+    }
+
+    // 5. Kiểm tra Phân Quyền (Teacher Whitelist) nếu có cấu hình TEACHER_IDS trong .env
+    if (config.teacherIds.length > 0 && !config.teacherIds.includes(senderId)) {
+      console.log(`🔒 [Chặn phân quyền] User "${senderName}" (UID: ${senderId}) không nằm trong danh sách TEACHER_IDS.`);
+      // Có thể im lặng bỏ qua để tránh làm phiền nhóm
+      return;
+    }
+
     // Xử lý các câu cảm ơn / khen ngợi / cười đùa xã giao ngắn (không gọi AI để tránh lãng phí và tránh trả lời lố)
     const casualKeywords = [
       "cảm ơn", "cam on", "thanks", "thank", "arigatou", "arigato",
@@ -114,7 +142,7 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       return;
     }
 
-    // 4. Cơ chế Cooldown / Rate Limiting chống spam
+    // 6. Cơ chế Cooldown / Rate Limiting chống spam
     const now = Date.now();
     const lastRequest = userCooldowns.get(senderId) || 0;
     if (now - lastRequest < config.cooldownMs) {
@@ -123,14 +151,7 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
     }
     userCooldowns.set(senderId, now);
 
-    console.log(`📩 [Tin nhắn mới] Từ: ${senderName} | Nội dung: "${rawText}" | Nhóm: ${isGroup ? message.threadId : "Tin nhắn riêng"}`);
-
-    // 5. Xử lý lệnh đặc biệt: /help
-    if (matchedPrefix === "/help" || cleanQuery.toLowerCase() === "help") {
-      const helpText = getHelpMessage(senderName);
-      await sendReply(api, message, helpText);
-      return;
-    }
+    console.log(`📩 [Tin nhắn mới] Từ: ${senderName} (UID: ${senderId}) | Nội dung: "${rawText}" | Nhóm: ${isGroup ? message.threadId : "Tin nhắn riêng"}`);
 
     // Nếu tag bot nhưng không hỏi gì
     if (cleanQuery.length === 0) {
@@ -139,7 +160,7 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       return;
     }
 
-    // 6. Kích hoạt trạng thái đang soạn tin (isTyping) ngay khi bắt đầu xử lý
+    // 7. Kích hoạt trạng thái đang soạn tin (isTyping) ngay khi bắt đầu xử lý
     if (config.simulateTyping) {
       try {
         await api.sendTypingEvent(message.threadId, message.type);
@@ -148,7 +169,7 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       }
     }
 
-    // 7. Tinh chỉnh câu hỏi gửi tới Gemini dựa trên lệnh
+    // 8. Tinh chỉnh câu hỏi gửi tới Gemini dựa trên lệnh
     let fullPrompt = cleanQuery;
     if (matchedPrefix === "/kanji") {
       fullPrompt = `Giải thích chi tiết chữ Kanji/từ vựng này: "${cleanQuery}". Nêu rõ Âm Hán Việt, Onyomi, Kunyomi, ý nghĩa, các từ ghép thông dụng và câu ví dụ.`;
@@ -158,10 +179,10 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       fullPrompt = `Hãy dịch và phân tích câu/đoạn này giữa tiếng Nhật và tiếng Việt: "${cleanQuery}". Nếu có lỗi ngữ pháp hoặc diễn đạt chưa tự nhiên, hãy sửa lại và giải thích lý do.`;
     }
 
-    // 8. Gọi AI Gemini xử lý
+    // 9. Gọi AI Gemini xử lý
     const aiResponse = await askJapaneseTutor(fullPrompt, senderName);
 
-    // 9. Gửi phản hồi lại cho học viên (kèm độ trễ mô phỏng gõ phím theo độ dài văn bản)
+    // 10. Gửi phản hồi lại cho học viên (kèm độ trễ mô phỏng gõ phím theo độ dài văn bản)
     await sendReply(api, message, aiResponse);
   } catch (error) {
     console.error("❌ [Handler Error] Lỗi khi xử lý tin nhắn:", error);
