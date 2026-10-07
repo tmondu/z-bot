@@ -83,14 +83,14 @@ function getHelpMessage(studentName: string): string {
     `📖 BẠN CÓ THỂ GỌI MÌNH THEO CÁC CÁCH SAU:\n` +
     `1️⃣ Tag tên bot: @${config.botName} + câu hỏi của bạn\n` +
     `2️⃣ Hoặc gõ các câu lệnh tiện ích:\n` +
-    `   • /dapan [cấp độ] [đề] [buổi]: Lấy bảng đáp án bài tập (VD: /dapan n5 de 1 b1)\n` +
+    `   • /dapan [khoảng câu hoặc buổi]: Lấy đáp án (VD: /dapan 1-50, /dapan n5 de 1 1-50, /dapan b1)\n` +
     `   • /hoi [nội dung]: Giải đáp mọi thắc mắc tiếng Nhật\n` +
     `   • /kanji [chữ hán/từ]: Tra cứu Hán Việt, On/Kun, cách nhớ & ví dụ\n` +
     `   • /nguphap [mẫu]: Giải thích ngữ pháp N5 - N1, cấu trúc, ví dụ\n` +
     `   • /dich [câu]: Dịch Nhật - Việt / Việt - Nhật, sửa lỗi hành văn\n` +
     `   • /id: Xem Zalo User ID & vai trò của bạn\n` +
     `   • /help: Xem danh sách lệnh hỗ trợ\n\n` +
-    `💡 Ví dụ: /dapan n5 de 1 b1 hoặc @${config.botName} phân biệt ~てたまらない và ~てならない`
+    `💡 Ví dụ: /dapan 1-50 hoặc /dapan n5 de 1 b1 hoặc @${config.botName} phân biệt ~てたまらない và ~てならない`
   );
 }
 
