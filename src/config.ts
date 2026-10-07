@@ -19,9 +19,10 @@ export interface BotConfig {
   teacherIds: string[];
   onlyGroupAdmins: boolean;
   groupAdminCacheMinutes: number;
+  solutionsApiUrl: string;
 }
 
-const rawPrefixes = process.env.BOT_PREFIXES || "/hoi,/kanji,/dich,/nguphap,/help,/id,/myid";
+const rawPrefixes = process.env.BOT_PREFIXES || "/hoi,/kanji,/dich,/nguphap,/dapan,/help,/id,/myid";
 const prefixes = rawPrefixes
   .split(",")
   .map((p) => p.trim().toLowerCase())
@@ -37,7 +38,7 @@ export const config: BotConfig = {
   geminiApiKey: process.env.GEMINI_API_KEY || "",
   geminiModel: process.env.GEMINI_MODEL || "gemini-3.8-flash",
   botName: process.env.BOT_NAME || "Trợ Giảng Tiếng Nhật PThamSS",
-  prefixes: prefixes.length > 0 ? prefixes : ["/hoi", "/kanji", "/dich", "/nguphap", "/help", "/id", "/myid"],
+  prefixes: prefixes.length > 0 ? prefixes : ["/hoi", "/kanji", "/dich", "/nguphap", "/dapan", "/help", "/id", "/myid"],
   replyDirectMessages: process.env.REPLY_DIRECT_MESSAGES !== "false",
   cooldownMs: parseInt(process.env.COOLDOWN_MS || "5000", 10),
   simulateTyping: process.env.SIMULATE_TYPING !== "false",
@@ -48,6 +49,7 @@ export const config: BotConfig = {
   teacherIds: teacherIds,
   onlyGroupAdmins: process.env.ONLY_GROUP_ADMINS === "true" || process.env.ONLY_ADMINS === "true",
   groupAdminCacheMinutes: parseInt(process.env.GROUP_ADMIN_CACHE_MINUTES || "30", 10),
+  solutionsApiUrl: process.env.SOLUTIONS_API_URL || "https://www.pthamnihongo.site/api/solutions",
 };
 
 export function validateConfig(): void {

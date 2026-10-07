@@ -1,6 +1,7 @@
 import { API, Message, ThreadType, GroupMessage } from "zca-js";
 import { config } from "../config";
 import { askJapaneseTutor } from "../ai";
+import { getExamSolution } from "../services/solutionService";
 
 // Lưu thời gian gọi gần nhất của từng user để chống spam (cooldown)
 const userCooldowns = new Map<string, number>();
@@ -82,13 +83,14 @@ function getHelpMessage(studentName: string): string {
     `📖 BẠN CÓ THỂ GỌI MÌNH THEO CÁC CÁCH SAU:\n` +
     `1️⃣ Tag tên bot: @${config.botName} + câu hỏi của bạn\n` +
     `2️⃣ Hoặc gõ các câu lệnh tiện ích:\n` +
+    `   • /dapan [cấp độ] [đề] [buổi]: Lấy bảng đáp án bài tập (VD: /dapan n5 de 1 b1)\n` +
     `   • /hoi [nội dung]: Giải đáp mọi thắc mắc tiếng Nhật\n` +
     `   • /kanji [chữ hán/từ]: Tra cứu Hán Việt, On/Kun, cách nhớ & ví dụ\n` +
     `   • /nguphap [mẫu]: Giải thích ngữ pháp N5 - N1, cấu trúc, ví dụ\n` +
     `   • /dich [câu]: Dịch Nhật - Việt / Việt - Nhật, sửa lỗi hành văn\n` +
     `   • /id: Xem Zalo User ID & vai trò của bạn\n` +
     `   • /help: Xem danh sách lệnh hỗ trợ\n\n` +
-    `💡 Ví dụ: /kanji 勉強 hoặc @${config.botName} phân biệt ~てたまらない và ~てならない`
+    `💡 Ví dụ: /dapan n5 de 1 b1 hoặc @${config.botName} phân biệt ~てたまらない và ~てならない`
   );
 }
 
@@ -118,7 +120,7 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
     let matchedPrefix = "";
     let cleanQuery = rawText;
 
-    // Kiểm tra tiền tố lệnh (/hoi, /kanji, /dich, /nguphap, /help, /id, /myid,...)
+    // Kiểm tra tiền tố lệnh (/hoi, /kanji, /dich, /nguphap, /dapan, /help, /id, /myid,...)
     for (const prefix of config.prefixes) {
       if (rawText.toLowerCase().startsWith(prefix)) {
         isCalled = true;
@@ -244,7 +246,21 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       }
     }
 
-    // 8. Tinh chỉnh câu hỏi gửi tới Gemini dựa trên lệnh
+    // 8. XỬ LÝ LỆNH LẤY ĐÁP ÁN ĐỀ THI: /dapan hoặc câu hỏi chứa từ khóa "đáp án" / "dap an"
+    const lowerQuery = cleanQuery.toLowerCase();
+    const isSolutionQuery =
+      matchedPrefix === "/dapan" ||
+      lowerQuery.includes("đáp án") ||
+      lowerQuery.includes("dap an");
+
+    if (isSolutionQuery) {
+      console.log(`📋 [Lấy đáp án] Học viên "${senderName}" yêu cầu đáp án: "${cleanQuery}"`);
+      const solutionReply = await getExamSolution(cleanQuery);
+      await sendReply(api, message, solutionReply);
+      return;
+    }
+
+    // 9. Tinh chỉnh câu hỏi gửi tới Gemini dựa trên lệnh
     let fullPrompt = cleanQuery;
     if (matchedPrefix === "/kanji") {
       fullPrompt = `Giải thích chi tiết chữ Kanji/từ vựng này: "${cleanQuery}". Nêu rõ Âm Hán Việt, Onyomi, Kunyomi, ý nghĩa, các từ ghép thông dụng và câu ví dụ.`;
@@ -254,10 +270,10 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       fullPrompt = `Hãy dịch và phân tích câu/đoạn này giữa tiếng Nhật và tiếng Việt: "${cleanQuery}". Nếu có lỗi ngữ pháp hoặc diễn đạt chưa tự nhiên, hãy sửa lại và giải thích lý do.`;
     }
 
-    // 9. Gọi AI Gemini xử lý
+    // 10. Gọi AI Gemini xử lý
     const aiResponse = await askJapaneseTutor(fullPrompt, senderName);
 
-    // 10. Gửi phản hồi lại cho học viên (kèm độ trễ mô phỏng gõ phím theo độ dài văn bản)
+    // 11. Gửi phản hồi lại cho học viên (kèm độ trễ mô phỏng gõ phím theo độ dài văn bản)
     await sendReply(api, message, aiResponse);
   } catch (error) {
     console.error("❌ [Handler Error] Lỗi khi xử lý tin nhắn:", error);
