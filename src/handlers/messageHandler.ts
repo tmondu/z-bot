@@ -130,6 +130,16 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       }
     }
 
+    // Luôn luôn nhận diện lệnh /dapan hoặc /da (dù BOT_PREFIXES trong .env có thiếu hay không)
+    if (!isCalled) {
+      const lowerRaw = rawText.toLowerCase();
+      if (lowerRaw === "/dapan" || lowerRaw.startsWith("/dapan ") || lowerRaw === "/da" || lowerRaw.startsWith("/da ")) {
+        isCalled = true;
+        matchedPrefix = "/dapan";
+        cleanQuery = rawText.replace(/^\/(?:dapan|da)\b/i, "").trim();
+      }
+    }
+
     // Kiểm tra xem tin nhắn có phải là quote/reply tin nhắn của chính bot không
     const isReplyingToBot = Boolean(
       message.data?.quote && String(message.data.quote.ownerId) === String(ownId)
@@ -230,13 +240,6 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
 
     console.log(`📩 [Tin nhắn mới] Từ: ${senderName} (UID: ${senderId}) | Nội dung: "${rawText}" | Nhóm: ${isGroup ? message.threadId : "Tin nhắn riêng"}`);
 
-    // Nếu tag bot nhưng không hỏi gì
-    if (cleanQuery.length === 0) {
-      const greeting = `Chào ${senderName}! Bạn cần Trợ Giảng PThamSS giải đáp thắc mắc gì về tiếng Nhật nào? Hãy gõ câu hỏi kèm nhé! (Gõ /help để xem hướng dẫn)`;
-      await sendReply(api, message, greeting);
-      return;
-    }
-
     // 7. Kích hoạt trạng thái đang soạn tin (isTyping) ngay khi bắt đầu xử lý
     if (config.simulateTyping) {
       try {
@@ -254,9 +257,16 @@ export async function handleIncomingMessage(api: API, ownId: string, message: Me
       lowerQuery.includes("dap an");
 
     if (isSolutionQuery) {
-      console.log(`📋 [Lấy đáp án] Học viên "${senderName}" yêu cầu đáp án: "${cleanQuery}"`);
+      console.log(`📋 [Lấy đáp án] Giáo viên "${senderName}" yêu cầu đáp án: "${cleanQuery}"`);
       const solutionReply = await getExamSolution(cleanQuery);
       await sendReply(api, message, solutionReply);
+      return;
+    }
+
+    // Nếu tag bot nhưng không hỏi gì
+    if (cleanQuery.length === 0) {
+      const greeting = `Chào ${senderName}! Bạn cần Trợ Giảng PThamSS giải đáp thắc mắc gì về tiếng Nhật nào? Hãy gõ câu hỏi kèm nhé! (Gõ /help để xem hướng dẫn)`;
+      await sendReply(api, message, greeting);
       return;
     }
 
